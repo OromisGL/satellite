@@ -1,0 +1,9 @@
+ipyleaflet
+eerepr
+geemap
+earthengine-api
+geopandas
+shapely
+scipy
+matplotlib
+pandas
