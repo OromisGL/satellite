@@ -6,6 +6,9 @@ from utils import *
 # GEE init
 ee.Initialize(project='impressive-bay-447915-g8')
 
+# select Land Cover from 2018
+corine = getIMG("COPERNICUS/CORINE/V20/100m/2018", "landcover")
+
 # Geo Information of Target Country
 country_geom = get_country_geometry("Germany")
 
@@ -23,7 +26,24 @@ gap_filled_composite = add_modis_data_for_gaps(landsat_compsite, country_geom)
 # Clipping the final Dataset
 final_result = gap_filled_composite.clip(country_geom)
 
+# creating masks for Forests
+forestMask = select_mask_OR(corine, 311, 312, 313)
+
+# creating masks for Agriculure
+agriMask = select_mask_AND(corine, *range(200, 300))
+
+#merging the two sets of Masks
+combinedMask = combine_mask_OR(forestMask, agriMask)
+
+
 # Uncomment a Function below to use it:
+
+# loop for 2018 to 2024 for NDVI 
+
+list_year = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
+
+for year in list_year:
+    processMODIS_NDVI(year, country_geom, combinedMask, 'projects/impressive-bay-447915-g8/assets/')
 
 # visual_map(final_result, country_geom)
 

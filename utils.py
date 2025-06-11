@@ -2,6 +2,7 @@
 import ee
 import geemap
 import ee.batch
+import datetime
 
 # Scaling Factor and Offset from Google Engine Docs
 SCALE = 0.00341802
@@ -14,6 +15,8 @@ T_MAX_K = 330
 # Dynamic transfer from Kelvin → DN
 dn_min = (T_MIN_K - OFFSET) / SCALE
 dn_max = (T_MAX_K - OFFSET) / SCALE
+
+# Create different Masks for Forest
 
 def get_country_geometry(name: str) -> ee.Geometry:
     """
@@ -186,3 +189,80 @@ def collections(dataset, country_geom, start, end, cloud='CLOUD_COVER'):
     .filterBounds(country_geom)
     .filter(ee.Filter.lt(cloud, 50))
 )
+    
+    
+def weekly(weeks, collection):
+    for start, end in weeks:
+        week_img = collection.filterDate(start, end).mean()
+        
+def select_mask_OR(region, *classes):
+    """_summary_
+
+    Args:
+        region (GEO INfo
+        classes: a list of numbers, each refers to a class from the Satillite Data
+    """
+    mask = region.eq(classes[0])
+    
+    for cls in classes[1:]:
+        mask = mask.Or(region.eq(cls))
+    return mask
+
+def select_mask_AND(region, *classes):
+    """_summary_
+
+    Args:
+        region (GEO INfo
+        classes: a list of numbers, each refers to a class from the Satillite Data
+    """
+    mask = region.eq(classes[0])
+    
+    for cls in classes[1:]:
+        mask = mask.And(region.eq(cls))
+    return mask
+
+def combine_mask_OR(*mask):
+    
+    mask = mask[0]
+    
+    for layer in mask[1:]:
+        mask = mask.And(layer)
+    return mask
+        
+def processMODIS_NDVI(year, region, masks, out_folder):
+    start = ee.Date.fromYMD(year, 9, 1)
+    end = ee.Date.fromYMD(year, 9, 30)
+    
+    modisNDVI = ee.imagecollection("MODIS/061/MOD13Q1") \
+        .filterDate(start, end) \
+        .select('NDVI') \
+        .map(lambda img: img 
+            .multiply(0.0001)
+            .copyProperties(img, ['system:time_start']))
+        
+    medianNDVI = modisNDVI.median().clip(region)
+    
+    maskedNDVI = medianNDVI.updateMask(masks).rename('NDVI_' + year)
+    
+    task = ee.batch.Export.image.toDrive(
+        image=maskedNDVI,
+        description=f"MODIS_NDVI_Sep_{year}_Forest_Agri",
+        folder=out_folder,
+        region=region,
+        scale=250,
+        crs='EPSG:4326',
+        maxPixels=1e13
+        )
+    task.start()
+    
+def getIMG(name, type):
+    """_summary_
+
+    Args:
+        name (String): name of the Data collection
+        type (String): type of the Data we need for processing 
+
+    Returns:
+        ee.Image:
+    """
+    return ee.Image(name).select(type)
