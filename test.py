@@ -33,7 +33,7 @@ forestMask = select_mask_OR(corine, 311, 312, 313)
 agriMask = select_mask_AND(corine, *range(200, 300))
 
 #merging the two sets of Masks
-combinedMask = combine_mask_OR(forestMask, agriMask)
+combinedMask = forestMask.Or(agriMask)
 
 
 # Uncomment a Function below to use it:

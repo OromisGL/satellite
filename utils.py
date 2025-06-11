@@ -233,7 +233,7 @@ def processMODIS_NDVI(year, region, masks, out_folder):
     start = ee.Date.fromYMD(year, 9, 1)
     end = ee.Date.fromYMD(year, 9, 30)
     
-    modisNDVI = ee.imagecollection("MODIS/061/MOD13Q1") \
+    modisNDVI = ee.ImageCollection("MODIS/061/MOD13Q1") \
         .filterDate(start, end) \
         .select('NDVI') \
         .map(lambda img: img 
@@ -242,11 +242,11 @@ def processMODIS_NDVI(year, region, masks, out_folder):
         
     medianNDVI = modisNDVI.median().clip(region)
     
-    maskedNDVI = medianNDVI.updateMask(masks).rename('NDVI_' + year)
+    maskedNDVI = medianNDVI.updateMask(masks).rename('NDVI_' + str(year))
     
     task = ee.batch.Export.image.toDrive(
         image=maskedNDVI,
-        description=f"MODIS_NDVI_Sep_{year}_Forest_Agri",
+        description=f"MODIS_NDVI_Sep_{str(year)}_Forest_Agri",
         folder=out_folder,
         region=region,
         scale=250,
