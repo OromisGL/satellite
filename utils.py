@@ -244,10 +244,10 @@ def processMODIS_NDVI(year, region, masks, out_folder):
     
     maskedNDVI = medianNDVI.updateMask(masks).rename('NDVI_' + str(year))
     
-    task = ee.batch.Export.image.toDrive(
+    task = ee.batch.Export.image.toAsset(
         image=maskedNDVI,
-        description=f"MODIS_NDVI_Sep_{str(year)}_Forest_Agri",
-        folder=out_folder,
+        description=f"MODIS_NDVI_Sep_{str(year)}",
+        assetId=f"{out_folder}/MODIS_NDVI_Sep_{str(year)}_Forest_Agri",
         region=region,
         scale=250,
         crs='EPSG:4326',
@@ -266,3 +266,26 @@ def getIMG(name, type):
         ee.Image:
     """
     return ee.Image(name).select(type)
+
+def get_masked_MODIS_NDVI(year, region, masks):
+    start = ee.Date.fromYMD(year, 9, 1)
+    end = ee.Date.fromYMD(year, 9, 30)
+    
+    return ee.ImageCollection("MODIS/061/MOD13Q1") \
+        .filterDate(start, end) \
+        .select('NDVI') \
+        .map(lambda img: img 
+            .multiply(0.0001)
+            .copyProperties(img, ['system:time_start'])).median().clip(region).updateMask(masks)
+
+def export_masked_MODIS_NDVI(ndviChange,out_folder, region, start, end):
+    task = ee.batch.Export.image.toAsset(
+        image=ndviChange,
+        description=f"MODIS_NDVI_Change_Sep_{str(start)}_{str(end)}",
+        assetId=f"{out_folder}/MODIS_NDVI_Sep_{str(start)}_{str(end)}_Forest_Agri",
+        region=region,
+        scale=250,
+        crs='EPSG:4326',
+        maxPixels=1e13
+        )
+    task.start()

@@ -3,53 +3,31 @@ import ee
 # importing all the custom Functions from utils.py
 from utils import *
 
-# GEE init
+# # GEE init
 ee.Initialize(project='impressive-bay-447915-g8')
 
-# select Land Cover from 2018
-corine = getIMG("COPERNICUS/CORINE/V20/100m/2018", "landcover")
-
-# Geo Information of Target Country
+# # Geo Information of Target Country
 country_geom = get_country_geometry("Germany")
 
-# Landsat-9 collection for summer 2023
-collection = collections("LANDSAT/LC09/C02/T1_L2", country_geom, "2023-05-01", "2023-10-01")
+# # Landsat-9 collection for summer 2023
+# collection = collections("LANDSAT/LC09/C02/T1_L2", country_geom, "2023-05-01", "2023-10-01")
 
-print("Anzahl Bilder nach räumlicher Filterung:", collection.size().getInfo())
+# print("Anzahl Bilder nach räumlicher Filterung:", collection.size().getInfo())
 
-print('Creating Landsat Composite...')
-landsat_compsite = create_gap_filled_composite(collection)
+# print('Creating Landsat Composite...')
+# landsat_compsite = create_gap_filled_composite(collection)
 
-print("Filling the Gaps with Modis Data...")
-gap_filled_composite = add_modis_data_for_gaps(landsat_compsite, country_geom)
+# print("Filling the Gaps with Modis Data...")
+# gap_filled_composite = add_modis_data_for_gaps(landsat_compsite, country_geom)
 
 # Clipping the final Dataset
-final_result = gap_filled_composite.clip(country_geom)
-
-# creating masks for Forests
-forestMask = select_mask_OR(corine, 311, 312, 313)
-
-# creating masks for Agriculure
-agriMask = select_mask_AND(corine, *range(200, 300))
-
-#merging the two sets of Masks
-combinedMask = forestMask.Or(agriMask)
-
+# final_result = gap_filled_composite.clip(country_geom)
 
 # Uncomment a Function below to use it:
-
-# loop for 2018 to 2024 for NDVI 
-
-list_year = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
-
-for year in list_year:
-    processMODIS_NDVI(year, country_geom, combinedMask, 'projects/impressive-bay-447915-g8/assets/')
 
 # visual_map(final_result, country_geom)
 
 # export_to_drive(final_result, country_geom)
-
-
 
 # def calculate_coverage_stats(image, geometry):
 #     """Berechnet Statistiken über die Datenabdeckung"""
