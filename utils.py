@@ -3,6 +3,11 @@ import ee
 import geemap
 import ee.batch
 import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4, portrait
+from reportlab.lib.units import cm
+import glob
+import os
 
 # Scaling Factor and Offset from Google Engine Docs
 SCALE = 0.00341802
@@ -267,11 +272,11 @@ def getIMG(name, type):
     """
     return ee.Image(name).select(type)
 
-def get_masked_MODIS_NDVI(year, region, masks):
+def get_masked_MODIS_NDVI(year, region, masks, image_collection):
     start = ee.Date.fromYMD(year, 9, 1)
     end = ee.Date.fromYMD(year, 9, 30)
     
-    return ee.ImageCollection("MODIS/061/MOD13Q1") \
+    return ee.ImageCollection(image_collection) \
         .filterDate(start, end) \
         .select('NDVI') \
         .map(lambda img: img 
@@ -282,10 +287,204 @@ def export_masked_MODIS_NDVI(ndviChange,out_folder, region, start, end):
     task = ee.batch.Export.image.toAsset(
         image=ndviChange,
         description=f"MODIS_NDVI_Change_Sep_{str(start)}_{str(end)}",
-        assetId=f"{out_folder}/MODIS_NDVI_Sep_{str(start)}_{str(end)}_Forest_Agri",
+        assetId=f"{out_folder}/MODIS_NDVI_Sep_{str(start)}_{str(end)}_Forest_Agri_Ukraine",
         region=region,
         scale=250,
         crs='EPSG:4326',
         maxPixels=1e13
         )
     task.start()
+    
+    
+def export_masked_COPERNICUS_NDVI(ndviChange, out_folder, region, start, end):
+    task = ee.batch.Export.image.toAsset(
+        image=ndviChange,
+        description=f"COPERNICUS_NDVI_Change_Sep_{str(start)}_{str(end)}",
+        assetId=f"{out_folder}/COPERNICUS_NDVI_Sep_{str(start)}_{str(end)}_VEGITAION_Ukraine",
+        region=region,
+        scale=200,
+        crs='EPSG:4326',
+        maxPixels=1e13
+        )
+    task.start()
+    
+def get_masked_COPERNICUS(year, region, masks, image_collection):
+    start = ee.Date.fromYMD(year, 9, 1)
+    end = ee.Date.fromYMD(year, 9, 30)
+    
+    return ee.ImageCollection(image_collection) \
+        .filterDate(start, end) \
+        .clip(region) \
+        .updateMask(masks)
+        
+
+def get_masked_NDVI(collection_id, region, mask, year, bands=None):
+    """_summary_
+
+    Args:
+        collection_id (String): input of the collection ID e.g. "COPERNICUS/S2_HARMONIZED"
+        region (geomentry Data): use get_country_geometry
+        mask (img Mask): combine masks befor
+        year (int): year you wanna exploit
+        bands (String or list of Strings, optional): select the bands you wanna use. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    start = ee.Date.fromYMD(year, 1, 1)
+    end = ee.Date.fromYMD(year, 12, 30)
+    col = ee.ImageCollection(collection_id) \
+            .filterDate(start, end) \
+            .filterBounds(region)
+
+    if bands:  # Sentinel-2
+        # 1) nur B4/B8 auswählen, 2) skalieren, 3) NDVI berechnen
+        img = col.median().select(bands).multiply(0.0001)
+        ndvi = img.normalizedDifference(bands).rename('NDVI')
+    else:      # MODIS
+        # 1) MODIS liefert schon ein NDVI-Band, 2) skalieren
+        ndvi = col.select('NDVI') \
+                .map(lambda i: i.multiply(0.0001)
+                .copyProperties(i,['system:time_start'])) \
+                .median()
+
+    # 3) clip & mask anwenden
+    return ndvi.clip(region).updateMask(mask)
+
+def export_masked_NDVI(suffix, prefix, ndviChange, out_folder, region, start, end):
+    task = ee.batch.Export.image.toAsset(
+        image=ndviChange,
+        description=f"{suffix}_{str(start)}_{str(end)}",
+        assetId=f"{out_folder}/{suffix}{str(start)}_{str(end)}_{prefix}",
+        region=region,
+        scale=200,
+        crs='EPSG:4326',
+        maxPixels=1e13
+        )
+    task.start()
+    
+def filter_bounds_geojson(country):
+    """_summary_
+
+    Args:
+        country (String): Country Name
+        
+    """
+    region = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+    
+    return region.filter(ee.Filter.eq('country_na', country)).geometry().bounds().getInfo()
+    
+    
+def get_img_from_projects(imgPath):
+    """
+    Args:
+        imgPath: (String) Name of the GEE Folder to fetch the Img Data and Name of the img File
+    """
+    return ee.Image(f'projects/impressive-bay-447915-g8/assets/{imgPath}')
+
+def img_collection(folder_path):
+    
+    assets = ee.data.listAssets({'parent': folder_path})['assets']
+    ids = [a['id'] for a in assets]
+    
+    return [ee.Image(id) for id in ids]
+
+def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict):
+    """
+    Erzeugt ein mehrseitiges PDF (DIN A4 Hochformat) mit:
+        - je einer PNG pro Seite (proportional skaliert, weißer Hintergrund)
+        - individueller Beschreibung oberhalb des Bildes
+        - Legende unterhalb des Bildes
+    `descriptions` ist ein Dict: {basename_ohne_ext: Beschreibungstext}.
+    """
+    # Canvas anlegen
+    c = canvas.Canvas(output_pdf, pagesize=portrait(A4))
+    page_w, page_h = portrait(A4)
+    
+    # Ränder und nutzbare Fläche
+    margin = 1 * cm
+    usable_w = page_w - 2 * margin
+    usable_h = page_h - 2 * margin
+    
+    # Alle Bilder einlesen
+    image_paths = sorted(glob.glob(os.path.join(image_folder, "German_NDVI_*.png")))
+    if not image_paths:
+        raise FileNotFoundError(f"Keine PNGs in {image_folder} gefunden.")
+    
+    for img_path in image_paths:
+        # (1) Weißer Hintergrund
+        c.setFillColorRGB(1, 1, 1)
+        c.rect(0, 0, page_w, page_h, fill=1, stroke=0)
+        
+        # (2) Beschreibung ermitteln
+        basename = os.path.splitext(os.path.basename(img_path))[0]
+        desc = descriptions.get(basename)
+        
+        if desc:
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont("Helvetica", 11)
+            # Text oberhalb des Bild-Rahmens
+            text_x = margin
+            text_y = margin + usable_h + 0.5 * cm
+            c.drawString(text_x, text_y, desc)
+        
+        # (3) Bild zentriert und proportional skalieren
+        c.drawImage(
+            img_path,
+            margin,
+            margin + 1.5*cm,
+            width=usable_w,
+            height=usable_h,
+            preserveAspectRatio=True,
+            anchor='c',
+            mask='auto'
+        )
+        
+                # Parameter für Legende
+        bar_thickness  = 0.5 * cm
+        legend_length = usable_h * 0.5
+        steps = 200
+        min_val, max_val = 0.0, 1.0
+        text_offset = 0.2 * cm
+        
+        # Grafikzustand sichern und transformieren
+        c.saveState()
+        tx = page_w - margin - bar_thickness
+        ty = margin
+        c.translate(tx, ty)
+        c.rotate(90)
+        
+        # Zustand wiederherstellen
+        c.restoreState()
+        
+        # Farbverlauf zeichnen (Weiß→Gelb→Grün)
+        for i in range(steps):
+            frac = i / (steps - 1)
+            if frac < 0.5:
+                r, g = 1, 1
+                b    = 1 - 2*frac
+            else:
+                r    = 2*(1-frac)
+                g, b = 1, 0
+            x = 0
+            y = frac * legend_length
+            w = bar_thickness
+            h = legend_length / steps
+            c.setFillColorRGB(r, g, b)
+            c.rect(x, y, w, h, fill=1, stroke=0)
+            
+        
+        # Min/Max-Beschriftung
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0,0,0)
+        c.drawString(bar_thickness + text_offset, 0, f"{min_val:.2f}")
+        c.drawString(bar_thickness + text_offset, legend_length - 9,  # annähernd Font-Height
+                    f"{max_val:.2f}")
+        
+        
+
+
+        c.showPage()
+    
+    c.save()
+    print(f"PDF erstellt: {output_pdf}")
