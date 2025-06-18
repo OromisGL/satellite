@@ -389,7 +389,7 @@ def img_collection(folder_path):
     
     return [ee.Image(id) for id in ids]
 
-def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict):
+def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict, common_prefix: str):
     """
     Erzeugt ein mehrseitiges PDF (DIN A4 Hochformat) mit:
         - je einer PNG pro Seite (proportional skaliert, weißer Hintergrund)
@@ -402,12 +402,12 @@ def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict):
     page_w, page_h = portrait(A4)
     
     # Ränder und nutzbare Fläche
-    margin = 1 * cm
+    margin = 2 * cm
     usable_w = page_w - 2 * margin
     usable_h = page_h - 2 * margin
     
     # Alle Bilder einlesen
-    image_paths = sorted(glob.glob(os.path.join(image_folder, "German_NDVI_*.png")))
+    image_paths = sorted(glob.glob(os.path.join(image_folder, f"{common_prefix}*.png")))
     if not image_paths:
         raise FileNotFoundError(f"Keine PNGs in {image_folder} gefunden.")
     
@@ -418,15 +418,14 @@ def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict):
         
         # (2) Beschreibung ermitteln
         basename = os.path.splitext(os.path.basename(img_path))[0]
-        desc = descriptions.get(basename)
+        desc = descriptions[basename]
         
-        if desc:
-            c.setFillColorRGB(0, 0, 0)
-            c.setFont("Helvetica", 11)
-            # Text oberhalb des Bild-Rahmens
-            text_x = margin
-            text_y = margin + usable_h + 0.5 * cm
-            c.drawString(text_x, text_y, desc)
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica", 11)
+        # Text oberhalb des Bild-Rahmens
+        text_x = margin
+        text_y = margin + usable_h + 0.5 * cm
+        c.drawString(text_x, text_y, desc)
         
         # (3) Bild zentriert und proportional skalieren
         c.drawImage(
@@ -472,18 +471,13 @@ def images_to_pdf(image_folder: str, output_pdf: str, descriptions: dict):
             h = legend_length / steps
             c.setFillColorRGB(r, g, b)
             c.rect(x, y, w, h, fill=1, stroke=0)
-            
-        
+
         # Min/Max-Beschriftung
         c.setFont("Helvetica", 9)
         c.setFillColorRGB(0,0,0)
         c.drawString(bar_thickness + text_offset, 0, f"{min_val:.2f}")
-        c.drawString(bar_thickness + text_offset, legend_length - 9,  # annähernd Font-Height
-                    f"{max_val:.2f}")
+        c.drawString(bar_thickness + text_offset, legend_length - 9, f"{max_val:.2f}")
         
-        
-
-
         c.showPage()
     
     c.save()
